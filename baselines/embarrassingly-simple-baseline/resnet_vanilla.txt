@@ -1,0 +1,5 @@
+Epoch :  1Validation:
+Epoch :  2Validation:
+Epoch :  3Validation:
+Epoch :  4Validation:
+Epoch :  5Validation:
