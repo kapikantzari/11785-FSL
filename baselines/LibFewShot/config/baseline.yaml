@@ -5,7 +5,7 @@ includes:
   - headers/model.yaml
   - headers/optimizer.yaml
   - classifiers/Baseline.yaml
-  - backbones/Conv64F.yaml
+  - backbones/resnet12.yaml
 
 classifier:
   name: Baseline
@@ -20,14 +20,14 @@ classifier:
     feat_dim: 640
     num_class: 64
 
-backbone:
-  name: Conv64F
-  kwargs:
-    is_flatten: True
-    is_feature: False
-    leaky_relu: False
-    negative_slope: 0.2
-    last_pool: True
+# backbone:
+#   name: Conv64F
+#   kwargs:
+#      is_flatten: True
+#      is_feature: False
+#      leaky_relu: False
+#      negative_slope: 0.2
+#      last_pool: True
 
 backbone:
   name: resnet12

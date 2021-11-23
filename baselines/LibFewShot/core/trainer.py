@@ -54,6 +54,7 @@ class Trainer(object):
             self.val_loader,
             self.test_loader,
         ) = self._init_dataloader(config)
+        print("returning from Trainer()")
         self.optimizer, self.scheduler, self.from_epoch = self._init_optim(config)
 
     def train_loop(self):
