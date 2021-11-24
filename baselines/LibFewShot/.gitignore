@@ -135,3 +135,6 @@ dmypy.json
 .idea/
 .vscode/
 results/
+
+# experiments
+baselines/LibFewShot/results/
