@@ -280,6 +280,9 @@ class Trainer(object):
             if config["log_name"] is None
             else config["log_name"]
         )
+        if not os.path.exists(config["result_root"]):
+            os.mkdir(config["result_root"])
+
         result_path = os.path.join(config["result_root"], result_dir)
         # self.logger.log("Result DIR: " + result_path)
         checkpoints_path = os.path.join(result_path, "checkpoints")
