@@ -1,5 +1,6 @@
 data_root: /home/dl_g33/dataset/miniImageNet--ravi
-image_size: 84
+image_size: 224
+#image_size: 84
 use_memory: True
 augment: True
 augment_times: 1
