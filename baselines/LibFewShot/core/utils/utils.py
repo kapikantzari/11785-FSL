@@ -31,6 +31,10 @@ def get_instance(module, name, config, **kwargs):
     if config[name]["kwargs"] is not None:
         kwargs.update(config[name]["kwargs"])
 
+    # print("Get Instance: ")
+    # print(module, config[name]["name"])
+    # print("kwargs")
+    # print(kwargs)
     return getattr(module, config[name]["name"])(**kwargs)
 
 
