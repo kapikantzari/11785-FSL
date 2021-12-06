@@ -9,6 +9,8 @@ import numpy as np
 import torch
 from torch import nn
 from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.neighbors import NearestNeighbors
 
 import core.model as arch
 from core.data import get_dataloader
@@ -38,8 +40,6 @@ class Test(object):
         self.result_path = result_path
         self.device, self.list_ids = self._init_device(config)
         self.viz_path, self.state_dict_path = self._init_files(config)
-        self.writer = TensorboardWriter(self.viz_path)
-        self.test_meter = self._init_meter()
         self.logger = getLogger(__name__)
         # self.logger.info(config)
         if load_data:
@@ -50,14 +50,17 @@ class Test(object):
                 self.test_loader,
             ) = self._init_dataloader(config)
         self.rng = np.random.default_rng(seed=42)
-        self.num_sampled = self.config["num_sampled"]
+        self.classifer = self._init_classifier(config)
 
-    def test_loop(self, output_dict_novel, base_means, base_cov, is_test=False):
+    def test_loop(self, output_dict_novel, base_means, base_cov, is_test=False, num_sampled=None):
         """
         The normal test loop: test and cal the 0.95 mean_confidence_interval.
         """
         print("Base mean:", base_means[0][:10])
         print("Base cov:", base_cov[0][:10])
+        self.num_sampled = num_sampled
+        if self.num_sampled == None:
+            self.num_sampled = self.config["num_sampled"]
         acc_list = []
 
         for epoch_idx in range(4):
@@ -65,8 +68,10 @@ class Test(object):
             acc = self._validate(output_dict_novel, base_means, base_cov, epoch_idx=epoch_idx)
             acc_list.append(acc)
             self.logger.info("[Epoch {}] Test Accuracy: {:.3f}".format(epoch_idx, acc))
-        self.logger.info("{} way {} shot ACC : {}".format(self.config["test_way"], self.config["test_shot"], float(np.mean(acc_list))))
+        accuracy = float(np.mean(acc_list))
+        self.logger.info("{} way {} shot ACC (num_sampled {}): {}".format(self.config["test_way"], self.config["test_shot"], self.num_sampled, accuracy))
         self.logger.info("............Testing is end............")
+        return accuracy
 
     def _validate(self, output_dict_novel, base_means, base_cov, epoch_idx=None):
         """
@@ -96,7 +101,7 @@ class Test(object):
             support_label = np.array([[label] * self.config["test_shot"]])
             query_data = np.array(data)[idxs[self.config["test_shot"]:]]
             query_label = np.array([[label] * (len(idxs) - self.config["test_shot"])])
-
+            
             if self.num_sampled != 0:
                 # Tukey's transform
                 beta = 0.5
@@ -124,7 +129,7 @@ class Test(object):
         Y_aug = np.vstack(Y_aug)
         query_data = np.vstack(query_data_all)
         query_label = np.vstack(query_label_all)
-        classifier = LogisticRegression(max_iter=1000).fit(X=X_aug, y=Y_aug.reshape(-1,))
+        classifier = self.classifier.fit(X=X_aug, y=Y_aug.reshape(-1,))
         predicts = classifier.predict(query_data)
         acc = np.mean(predicts == query_label.reshape(-1,))
         return acc
@@ -243,16 +248,13 @@ class Test(object):
         device, list_ids = prepare_device(config["device_ids"], config["n_gpu"])
         return device, list_ids
 
-    def _init_meter(self):
-        """
-        Init the AverageMeter of test stage to cal avg... of batch_time, data_time,calc_time ,loss and acc1.
-
-        Returns:
-            tuple: A tuple of train_meter, val_meter, test_meter.
-        """
-        test_meter = AverageMeter("test", ["batch_time", "data_time", "acc"], self.writer)
-
-        return test_meter
+    def _init_classifier(self, config):
+        if config["test_classifier"] == "lr":
+            self.classifier = LogisticRegression(max_iter=1000)
+        elif config["test_classifier"] == "svm":
+            self.classifier = SVC()
+        elif config["test_classifier"] == "knn":
+            self.classifier = NearestNeighbors(n_neighbors=2, algorithm='ball_tree')
 
     def extract_features_loop(self, checkpoint_dir, tag='last',loader_type='base'):
         save_dir = '{}/{}'.format(checkpoint_dir, tag)
