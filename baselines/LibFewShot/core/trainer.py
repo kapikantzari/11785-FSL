@@ -7,11 +7,14 @@ from time import time
 import torch
 import yaml
 from torch import nn
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 from queue import Queue
-import core.model as arch
-from core.data import get_dataloader
-from core.utils import (
+# import model as arch
+from .data import get_dataloader, get_vit_dataloader
+from .utils import (
+    accuracy,
     AverageMeter,
     ModelType,
     SaveType,
@@ -26,6 +29,11 @@ from core.utils import (
     get_instance,
     data_prefetcher,
 )
+
+import transformers
+from transformers import ViTFeatureExtractor, ViTForImageClassification
+
+ViTbase = 'google/vit-base-patch16-224-in21k'
 
 
 class Trainer(object):
@@ -48,7 +56,9 @@ class Trainer(object):
         self.train_meter, self.val_meter, self.test_meter = self._init_meter()
         self.logger = getLogger(__name__)
         self.logger.info(config)
+
         self.model, self.model_type = self._init_model(config)
+
         (
             self.train_loader,
             self.val_loader,
@@ -57,6 +67,9 @@ class Trainer(object):
         print("returning from Trainer()")
         self.optimizer, self.scheduler, self.from_epoch = self._init_optim(config)
 
+    """
+        LibFewShot train
+    """
     def train_loop(self):
         """
         The normal train loop: train-val-test and save model when val-acc increases.
@@ -133,10 +146,15 @@ class Trainer(object):
             calc_begin = time()
             output, acc, loss = self.model.set_forward_loss(batch)
 
+            self.logger.info(loss)
+            self.logger.info(output)
+            self.logger.info(acc)
+
             # compute gradients
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+
             meter.update("calc_time", time() - calc_begin)
 
             # measure accuracy and record loss
@@ -329,7 +347,8 @@ class Trainer(object):
         Returns:
             tuple: A tuple of the model and model's type.
         """
-        emb_func = get_instance(arch, "backbone", config)
+
+        emb_func = get_instance(arch, "backbone", config) # backbone feature extractor
         model_kwargs = {
             "way_num": config["way_num"],
             "shot_num": config["shot_num"] * config["augment_times"],
@@ -341,6 +360,9 @@ class Trainer(object):
             "device": self.device,
         }
         model = get_instance(arch, "classifier", config, **model_kwargs)
+        # model = emb_func, classifer -> train
+        print("Model:")
+        print(model)
 
         self.logger.info(model)
         self.logger.info("Trainable params in the model: {}".format(count_parameters(model)))
