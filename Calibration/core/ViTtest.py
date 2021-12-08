@@ -158,28 +158,24 @@ class ViTTest(object):
         self.val_loader = self.model.val_loader
         self.test_loader = self.model.test_loader
 
-    def test_loop(self):
+    def test_loop(self, output_dict_novel, base_means, base_cov, is_test=False):
         """
         The normal test loop: test and cal the 0.95 mean_confidence_interval.
         """
-        total_accuracy = 0.0
-        total_h = np.zeros(self.config["test_epoch"])
-        total_accuracy_vector = []
+        print("Base mean:", base_means.shape)
+        print("Base cov:", base_cov.shape)
+        acc_list = []
+        self.logger.info("test way {} test shot {} test query {}" .format(self.config["test_way"], self.config["test_shot"],self.config["test_query"]))
 
-        for epoch_idx in range(self.config["test_epoch"]):
+        for epoch_idx in range(4):
             self.logger.info("============ Testing on the test set ============")
-            _, accuracies = self._validate(epoch_idx)
-            test_accuracy, h = mean_confidence_interval(accuracies)
-            self.logger.info("Test Accuracy: {:.3f}\t h: {:.3f}".format(test_accuracy, h))
-            total_accuracy += test_accuracy
-            total_accuracy_vector.extend(accuracies)
-            total_h[epoch_idx] = h
-
-        aver_accuracy, h = mean_confidence_interval(total_accuracy_vector)
-        self.logger.info("Aver Accuracy: {:.3f}\t Aver h: {:.3f}".format(aver_accuracy, h))
+            acc = self._validate(output_dict_novel, base_means, base_cov, epoch_idx=epoch_idx)
+            acc_list.append(acc)
+            self.logger.info("[Epoch {}] Test Accuracy: {:.3f}".format(epoch_idx, acc))
+        self.logger.info("{} way {} shot ACC : {}".format(self.config["test_way"], self.config["test_shot"], float(np.mean(acc_list))))
         self.logger.info("............Testing is end............")
 
-    def _validate(self, epoch_idx):
+    def _validate(self, output_dict_novel, base_means, base_cov, epoch_idx=None):
         """
         The test stage.
 
@@ -189,74 +185,56 @@ class ViTTest(object):
         Returns:
             float: Acc.
         """
-        # switch to evaluate mode
-        self.model.eval()
-        print("model type: ")
-        print(self.model)
-        #self.model.reverse_setting_info()
-        meter = self.test_meter
-        meter.reset()
-        episode_size = self.config["episode_size"]
-        accuracies = []
-
-        end = time()
-        if self.model_type == ModelType.METRIC:
-            enable_grad = False
+        X_aug = []
+        Y_aug = []
+        query_data_all = []
+        query_label_all = []
+        k = 2
+        if epoch_idx != None:
+            classes = sorted(list(output_dict_novel.keys()))[self.config["test_way"]*epoch_idx:self.config["test_way"]*(epoch_idx+1)]
         else:
-            enable_grad = True
+            classes = np.random.permutation(list(output_dict_novel.keys()))[:self.config["test_way"]]
+        
+        for label in classes:
+            data = output_dict_novel[label]
+            # idxs = np.random.permutation(len(data))[:self.config["test_shot"]+self.config["test_query"]]
+            idxs = np.arange(self.config["test_shot"]+self.config["test_query"])
+            support_data = np.array(data)[idxs[:self.config["test_shot"]]]
+            support_label = np.array([[label] * self.config["test_shot"]])
+            query_data = np.array(data)[idxs[self.config["test_shot"]:]]
+            query_label = np.array([[label] * (len(idxs) - self.config["test_shot"])])
 
-        with torch.set_grad_enabled(enable_grad):
-            for episode_idx, batch in enumerate(self.test_loader):
-                self.writer.set_step(epoch_idx * len(self.test_loader) + episode_idx * episode_size)
-
-                meter.update("data_time", time() - end)
-
-                # calculate the output
-                outputs = self.model.forward(batch.pixel_values,batch.labels)
-
-                #debugging output
-                print('outputs: ')
-                print(outputs)
-                logits=outputs[1]
-                print('labels: ')
-                print(batch.labels)
-                print(batch.labels.shape)
-                print('logits: ')
-                print(logits)
-                print(logits.shape)
-                pred=torch.argmax(logits,dim=1)
-                print(pred)
-                accuracies.append(outputs[1])
-                print(acc)
-                # measure accuracy and record loss
-                meter.update("acc", acc)
-
-                # measure elapsed time
-                meter.update("batch_time", time() - end)
-                end = time()
-
-                if (
-                    episode_idx != 0 and (episode_idx + 1) % self.config["log_interval"] == 0
-                ) or episode_idx * episode_size + 1 >= len(self.test_loader):
-                    info_str = (
-                        "Epoch-({}): [{}/{}]\t"
-                        "Time {:.3f} ({:.3f})\t"
-                        "Data {:.3f} ({:.3f})\t"
-                        "Acc@1 {:.3f} ({:.3f})".format(
-                            epoch_idx,
-                            (episode_idx + 1) * episode_size,
-                            len(self.test_loader),
-                            meter.last("batch_time"),
-                            meter.avg("batch_time"),
-                            meter.last("data_time"),
-                            meter.avg("data_time"),
-                            meter.last("acc"),
-                            meter.avg("acc"),
-                        )
-                    )
-                    self.logger.info(info_str)
-       # self.model.reverse_setting_info()
-        return meter.avg("acc"), accuracies
+            if self.num_sampled != 0:
+                # Tukey's transform
+                beta = 0.5
+                # softmax = nn.Softmax(dim=1)
+                # support_data = np.power(softmax(torch.tensor(support_data)).numpy(), beta)
+                # query_data = np.power(softmax(torch.tensor(query_data)).numpy(), beta)
+                support_data = np.power(support_data * (support_data>0), beta)
+                query_data = np.power(query_data * (query_data>0), beta)
+                
+                # distribution calibration and feature sampling
+                mean, cov = self.distribution_calibration(support_data, base_means, base_cov, k=k)
+                sampled_data = np.random.multivariate_normal(mean=mean, cov=cov, size=self.num_sampled)
+                sampled_label = [support_label[0]] * self.num_sampled
+                print("Label {}: length {}, k={}, first entry {}".format(label, len(sampled_data), k, sampled_data[0][:10]))
+                X_aug.append(np.concatenate([support_data, sampled_data]))
+                Y_aug.append(np.concatenate([support_label, sampled_label]))
+                query_data_all.append(query_data)
+                query_label_all.append(query_label.reshape(-1,1))
+            else:
+                X_aug.append(support_data)
+                Y_aug.append(support_label)
+                query_data_all.append(query_data)
+                query_label_all.append(query_label.reshape(-1,1))
+        X_aug = np.vstack(X_aug)
+        Y_aug = np.vstack(Y_aug)
+        query_data = np.vstack(query_data_all)
+        query_label = np.vstack(query_label_all)
+        classifier = LogisticRegression(max_iter=1000).fit(X=X_aug, y=Y_aug.reshape(-1,))
+        predicts = classifier.predict(query_data)
+        acc = np.mean(predicts == query_label.reshape(-1,))
+        return acc
 
     def _init_files(self, config):
         """
@@ -322,12 +300,13 @@ class ViTTest(object):
         return test_meter
 
 
-    #added from test.py (use set_forward_loss, or set_forward)
+
     def _extract_features(self, loader, output_dict, loader_type):
         self.model.eval()
         print("loader type: ", loader_type)
         for i, batch in enumerate(loader):
-            print(f"-- output of batch {i}/{len(loader)} --")
+            if (i+1) % 50 == 0:
+                self.logger.info(f"-- output of batch {i}/{len(loader)} --")
             pixel_values = batch.pixel_values
             labels = batch.labels
             output = self.model.emb_func(pixel_values=pixel_values)
@@ -345,7 +324,7 @@ class ViTTest(object):
         return output_dict
     
 
-    #added from test.py
+
     def extract_features_loop(self, checkpoint_dir, tag, loader_type):
         save_dir = '{}/{}'.format(checkpoint_dir, tag)
         if not os.path.isdir(save_dir):
@@ -365,5 +344,6 @@ class ViTTest(object):
             self.logger.info("save dir: {}" .format(save_dir))
             with open(save_dir + '/%s_features.plk'%loader_type, 'wb') as f:
                 pickle.dump(output_dict, f)
-        
+
+            print("{} features extraction done!" .format(loader_type))
             return output_dict

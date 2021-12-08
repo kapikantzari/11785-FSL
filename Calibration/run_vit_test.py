@@ -31,12 +31,16 @@ if __name__ == "__main__":
 
     # Extract features for base and novel class
     test.logger.info("============ Extract features and generating base class stats ============")
-    output_dict_base = test.extract_features_loop(checkpoint_dir, tag='vit', loader_type='base')
-    # output_dict_base = test.extract_features_loop(checkpoint_dir, loader_type='base')
-    test.logger.info("Base set features saved!")
-    # output_dict_novel = test.extract_features_loop(checkpoint_dir, tag='last',loader_type='novel')
-    output_dict_novel = test.extract_features_loop(checkpoint_dir, loader_type='novel')
+    # output_dict_base = test.extract_features_loop(checkpoint_dir, tag='vit', loader_type='base')
+    # test.logger.info("Base set features saved!")
+    output_dict_novel = test.extract_features_loop(checkpoint_dir, tag='vit', loader_type='novel')
     test.logger.info("Novel features saved!")
+    # basepath = os.path.join(data_root, "vit/base_features.plk")
+    # with open(basepath, "rb") as fin:
+    #     output_dict_base = pickle.load(fin)
+    # novelpath = os.path.join(data_root, "vit/novel_features.plk")
+    # with open(novelpath, "rb") as fin:
+    #     output_dict_novel = pickle.load(fin)
 
     # Generate base class stats
     base_means = []
