@@ -35,11 +35,6 @@ from transformers import ViTFeatureExtractor, ViTForImageClassification, ViTMode
 
 ViTbase = 'google/vit-base-patch16-224-in21k'
 
-# 1. Vit feature extractor -> input data,f extractor x -> ignore
-# 2. ViTModel -> self.embed_func (load params from vitforclassifier)
-# 3. ViTForImageClassification -> self.model (trained! param)
-
-
 class VisionTransformerClassifier(pl.LightningModule): # customized class
     def __init__(self, ViTmodel, config):
         super(VisionTransformerClassifier, self).__init__()
@@ -50,7 +45,6 @@ class VisionTransformerClassifier(pl.LightningModule): # customized class
         print("- - - [Vision Transformer Classifier initialized] - - ")
 
         # TODO:
-        print(ViTmodel)
         self.emb_func = ViTmodel.from_pretrained(ViTbase) # pretrained param -> finetuned params
         # 1. feature_extractor(emb_func)
         # 2. few shot def _validate()
@@ -133,80 +127,116 @@ class VisionTransformerClassifier(pl.LightningModule): # customized class
         self.log('val_loss', loss)
 
 
-class ViTTrainer(object):
+class ViTTest(object):
     """
-    The trainer.
+    The tester.
 
-    Build a trainer from config dict, set up optimizer, model, etc. Train/test/val and log.
+    Build a tester from config dict, set up model from a saved checkpoint, etc. Test and log.
     """
 
-
-    def __init__(self, config):
+    def __init__(self, config, result_path=None):
         self.config = config
-        # self.device, self.list_ids = self._init_device(config)
-        (
-            self.result_path,
-            self.log_path,
-            self.checkpoints_path,
-            self.viz_path,
-        ) = self._init_files(config)
+        self.result_path = result_path
+        self.device, self.list_ids = self._init_device(config)
+        self.viz_path, self.state_dict_path = self._init_files(config)
         self.writer = TensorboardWriter(self.viz_path)
-        self.train_meter, self.val_meter, self.test_meter = self._init_meter()
+        self.test_meter = self._init_meter()
         self.logger = getLogger(__name__)
         self.logger.info(config)
-
-        """
-            ViT model
-        """
         self.model = VisionTransformerClassifier(ViTbase, self.config)
-        self.logger.info("Trainable params in the model: {}".format(count_parameters(self.model)))
+        self.model_type = ModelType.METRIC
+
         self.train_loader = self.model.train_loader
         self.val_loader = self.model.val_loader
         self.test_loader = self.model.test_loader
 
+    def test_loop(self):
+        """
+        The normal test loop: test and cal the 0.95 mean_confidence_interval.
+        """
+        total_accuracy = 0.0
+        total_h = np.zeros(self.config["test_epoch"])
+        total_accuracy_vector = []
 
-    """
-        ViT train
-    """
-    def _train(self):
-        ACCUMULATE_GRAD_BATCHES = 1
-        VAL_CHECK_INTERVAL = 0.5
-        batch_size = 16
-        log_dir = '../results/ViT_exp1_dec_1'
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        for epoch_idx in range(self.config["test_epoch"]):
+            self.logger.info("============ Testing on the test set ============")
+            _, accuracies = self._validate(epoch_idx)
+            test_accuracy, h = mean_confidence_interval(accuracies)
+            self.logger.info("Test Accuracy: {:.3f}\t h: {:.3f}".format(test_accuracy, h))
+            total_accuracy += test_accuracy
+            total_accuracy_vector.extend(accuracies)
+            total_h[epoch_idx] = h
 
-        self.logger.info('Trainer log dir: %s' %(log_dir))
-        checkpoint_callback = ModelCheckpoint(
-            dirpath=f'{log_dir}/',
-            filename='vit-mini-{epoch:02d}-{loss:.2f}',
-            monitor='train_loss',
-            mode='min',
-            save_top_k=1,
-            verbose=False)
-        # best model
+        aver_accuracy, h = mean_confidence_interval(total_accuracy_vector)
+        self.logger.info("Aver Accuracy: {:.3f}\t Aver h: {:.3f}".format(aver_accuracy, h))
+        self.logger.info("............Testing is end............")
 
-        trainer = pl.Trainer(
-            callbacks=checkpoint_callback,
-            max_epochs=self.config['epoch'],
-            accumulate_grad_batches=ACCUMULATE_GRAD_BATCHES,
-            val_check_interval=VAL_CHECK_INTERVAL,
-            # devices=4,
-            accelerator='gpu',
-            gpus=1)
+    def _validate(self, epoch_idx):
+        """
+        The test stage.
 
-        self.logger.info(trainer)
-        print("*"*40)
-        print("Start Train ...")
-        print("*"*40)
-        trainer.fit(
-            model=self.model,
-            train_dataloader=self.train_loader,
-            val_dataloaders=self.train_loader)
+        Args:
+            epoch_idx (int): Epoch index.
+
+        Returns:
+            float: Acc.
+        """
+        # switch to evaluate mode
+        self.model.eval()
+        self.model.reverse_setting_info()
+        meter = self.test_meter
+        meter.reset()
+        episode_size = self.config["episode_size"]
+        accuracies = []
+
+        end = time()
+        if self.model_type == ModelType.METRIC:
+            enable_grad = False
+        else:
+            enable_grad = True
+
+        with torch.set_grad_enabled(enable_grad):
+            for episode_idx, batch in enumerate(self.test_loader):
+                self.writer.set_step(epoch_idx * len(self.test_loader) + episode_idx * episode_size)
+
+                meter.update("data_time", time() - end)
+
+                # calculate the output
+                output, acc = self.model.set_forward(batch)
+                accuracies.append(acc)
+                # measure accuracy and record loss
+                meter.update("acc", acc)
+
+                # measure elapsed time
+                meter.update("batch_time", time() - end)
+                end = time()
+
+                if (
+                    episode_idx != 0 and (episode_idx + 1) % self.config["log_interval"] == 0
+                ) or episode_idx * episode_size + 1 >= len(self.test_loader):
+                    info_str = (
+                        "Epoch-({}): [{}/{}]\t"
+                        "Time {:.3f} ({:.3f})\t"
+                        "Data {:.3f} ({:.3f})\t"
+                        "Acc@1 {:.3f} ({:.3f})".format(
+                            epoch_idx,
+                            (episode_idx + 1) * episode_size,
+                            len(self.test_loader),
+                            meter.last("batch_time"),
+                            meter.avg("batch_time"),
+                            meter.last("data_time"),
+                            meter.avg("data_time"),
+                            meter.last("acc"),
+                            meter.avg("acc"),
+                        )
+                    )
+                    self.logger.info(info_str)
+        self.model.reverse_setting_info()
+        return meter.avg("acc"), accuracies
 
     def _init_files(self, config):
         """
-        Init result_path(checkpoints_path, log_path, viz_path) from the config dict.
+        Init result_path(log_path, viz_path) from the config dict.
 
         Args:
             config (dict): Parsed config file.
@@ -214,83 +244,55 @@ class ViTTrainer(object):
         Returns:
             tuple: A tuple of (result_path, log_path, checkpoints_path, viz_path).
         """
-        # you should ensure that data_root name contains its true name
-        base_dir = "{}-{}-{}-{}-{}".format(
-            config["classifier"]["name"],
-            config["data_root"].split("/")[-1],
-            config["backbone"]["name"],
-            config["way_num"],
-            config["shot_num"],
-        )
-        result_dir = (
-            base_dir
-            + "{}-{}".format(
-                ("-" + config["tag"]) if config["tag"] is not None else "", get_local_time()
+        if self.result_path is not None:
+            result_path = self.result_path
+        else:
+            result_dir = "{}-{}-{}-{}-{}".format(
+                config["classifier"]["name"],
+                # you should ensure that data_root name contains its true name
+                config["data_root"].split("/")[-1],
+                config["backbone"]["name"],
+                config["way_num"],
+                config["shot_num"],
             )
-            if config["log_name"] is None
-            else config["log_name"]
-        )
-        if not os.path.exists(config["result_root"]):
-            os.mkdir(config["result_root"])
-
-        result_path = os.path.join(config["result_root"], result_dir)
+            result_path = os.path.join(config["result_root"], result_dir)
         # self.logger.log("Result DIR: " + result_path)
-        checkpoints_path = os.path.join(result_path, "checkpoints")
         log_path = os.path.join(result_path, "log_files")
         viz_path = os.path.join(log_path, "tfboard_files")
-        create_dirs([result_path, log_path, checkpoints_path, viz_path])
-
-        with open(os.path.join(result_path, "config.yaml"), "w", encoding="utf-8") as fout:
-            fout.write(yaml.dump(config))
 
         init_logger(
             config["log_level"],
             log_path,
             config["classifier"]["name"],
             config["backbone"]["name"],
+            is_train=False,
         )
 
-        return result_path, log_path, checkpoints_path, viz_path
+        state_dict_path = os.path.join(result_path, "checkpoints", "model_best.pth")
+
+        return viz_path, state_dict_path
+
+    def _init_device(self, config):
+        """
+        Init the devices from the config file.
+
+        Args:
+            config (dict): Parsed config file.
+
+        Returns:
+            tuple: A tuple of deviceand list_ids.
+        """
+        init_seed(config["seed"], config["deterministic"])
+        device, list_ids = prepare_device(config["device_ids"], config["n_gpu"])
+        return device, list_ids
 
     def _init_meter(self):
         """
-        Init the AverageMeter of train/val/test stage to cal avg... of batch_time, data_time,calc_time ,loss and acc1.
+        Init the AverageMeter of test stage to cal avg... of batch_time, data_time,calc_time ,loss and acc1.
 
         Returns:
             tuple: A tuple of train_meter, val_meter, test_meter.
         """
-        train_meter = AverageMeter(
-            "train",
-            ["batch_time", "data_time", "calc_time", "loss", "acc1"],
-            self.writer,
-        )
-        val_meter = AverageMeter(
-            "val",
-            ["batch_time", "data_time", "calc_time", "acc1"],
-            self.writer,
-        )
-        test_meter = AverageMeter(
-            "test",
-            ["batch_time", "data_time", "calc_time", "acc1"],
-            self.writer,
-        )
+        test_meter = AverageMeter("test", ["batch_time", "data_time", "acc"], self.writer)
 
-        return train_meter, val_meter, test_meter
-
-    def _cal_time_scheduler(self, start_time, epoch_idx):
-        """
-        Calculate the remaining time and consuming time of the training process.
-
-        Returns:
-            str: A string similar to "00:00:00/0 days, 00:00:00". First: comsuming time; Second: total time.
-        """
-        total_epoch = self.config["epoch"] - self.from_epoch - 1
-        now_epoch = epoch_idx - self.from_epoch
-
-        time_consum = datetime.datetime.now() - datetime.datetime.fromtimestamp(start_time)
-        time_consum -= datetime.timedelta(microseconds=time_consum.microseconds)
-        time_remain = (time_consum * (total_epoch - now_epoch)) / (now_epoch)
-
-        res_str = str(time_consum) + "/" + str(time_remain + time_consum)
-
-        return res_str
+        return test_meter

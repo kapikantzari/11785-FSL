@@ -50,7 +50,6 @@ class VisionTransformerClassifier(pl.LightningModule): # customized class
         print("- - - [Vision Transformer Classifier initialized] - - ")
 
         # TODO:
-        print(ViTmodel)
         self.emb_func = ViTmodel.from_pretrained(ViTbase) # pretrained param -> finetuned params
         # 1. feature_extractor(emb_func)
         # 2. few shot def _validate()

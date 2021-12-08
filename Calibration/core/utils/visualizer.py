@@ -35,9 +35,12 @@ class TensorboardWriter(object):
         """
         if name in self.tb_writer_funcs:
             add_data = getattr(self.writer, name, None)
+            print(add_data)
 
             def wrapper(tag, data, *args, **kwargs):
-                if add_data is not None:
+                if add_data is not None and data!="logits":
+                    print(tag)
+                    print(data)
                     add_data(tag, data, self.step, *args, **kwargs)
 
             return wrapper

@@ -49,8 +49,10 @@ class Test(object):
                 self.train_loader,
                 self.test_loader,
             ) = self._init_dataloader(config)
+            
         self.rng = np.random.default_rng(seed=42)
         self.num_sampled = self.config["num_sampled"]
+    
 
     def test_loop(self, output_dict_novel, base_means, base_cov, is_test=False):
         """

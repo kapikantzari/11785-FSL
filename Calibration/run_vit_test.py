@@ -6,7 +6,7 @@ import numpy as np
 sys.dont_write_bytecode = True
 
 from core.config import Config
-from core import Test
+from core import Test, ViTTest
 
 PATH = "/home/dl_g33/dataset/miniImageNet--ravi/trained"
 VAR_DICT = {
@@ -20,7 +20,10 @@ VAR_DICT = {
 
 if __name__ == "__main__":
     config = Config(os.path.join(PATH, "config.yaml"), VAR_DICT).get_config_dict()
-    test = Test(config, result_path=PATH,load_data=True)
+    print("="*40)
+    print(config)
+    print("="*40)
+    test = ViTTest(config, result_path=PATH)
     checkpoint_dir = os.path.join(PATH, 'features')
 
     # Extract features for base and novel class
@@ -41,4 +44,6 @@ if __name__ == "__main__":
         base_cov.append(cov)
     test.logger.info("Finish generating base class stats!")
 
-    test.test_loop(output_dict_novel, base_means, base_cov)
+    #test.test_loop(output_dict_novel, base_means, base_cov)
+    test.test_loop()
+    
