@@ -1,4 +1,6 @@
 */results/*
 */lightning_logs/*
 */lightning_logs/*
-baselines/*
+
+baselines/
+*anna*

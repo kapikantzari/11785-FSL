@@ -305,22 +305,28 @@ class ViTTest(object):
         self.model.eval()
         print("loader type: ", loader_type)
         for i, batch in enumerate(loader):
+            if i > 1:
+                break
             if (i+1) % 50 == 0:
                 self.logger.info(f"-- output of batch {i}/{len(loader)} --")
+            self.logger.info("intput size: {}" .format(batch.pixel_values.shape))
             pixel_values = batch.pixel_values
             labels = batch.labels
-            output = self.model.emb_func(pixel_values=pixel_values)
-            # self.logger.info("{}, {}" .format(output.last_hidden_state.shape, labels.shape))
+            output = self.model.emb_func(pixel_values=pixel_values, output_hidden_states=True)
+            self.logger.info("output: {}" .format(output.last_hidden_state[:,0,:]))
+            self.logger.info("output: {}" .format(output.last_hidden_state[:,1,:]))
+            # self.logger.info("last hidden state size:{}, lasths[0] size: {}" .format(output.last_hidden_state.shape, output.last_hidden_state[0].shape))
             bs = labels.shape[0]
             # for out, label in zip(output.last_hidden_state, labels):
             for i in range(bs):
                 out = output.last_hidden_state[i]
                 label = labels[i]
-                # self.logger.info("{}, label {}, out shape {}" .format(i, label, out.shape))
+                self.logger.info("{}, label {}, out shape {}" .format(i, label.shape, out.shape))
                 outs = output_dict.get(label.item(), [])
                 outs.append(out)
                 output_dict[label.item()] = outs
                 # self.logger.info("{}, {}" .format(label, out))
+                self.logger.info("output dict[{}] = {}" .format(label.item(), len(output_dict[label.item()])))
         return output_dict
     
 
@@ -344,6 +350,7 @@ class ViTTest(object):
             self.logger.info("save dir: {}" .format(save_dir))
             with open(save_dir + '/%s_features.plk'%loader_type, 'wb') as f:
                 pickle.dump(output_dict, f)
-
+            
+            self.logger.info("output dict\n{}" .format(output_dict))
             print("{} features extraction done!" .format(loader_type))
             return output_dict
