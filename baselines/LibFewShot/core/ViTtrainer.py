@@ -113,6 +113,8 @@ class VisionTransformerClassifier(pl.LightningModule): # customized class
     def forward(self, pixel_values, labels):
         return self._model(pixel_values=pixel_values, labels=labels)
 
+    #def set_forward(): return self.embed_func
+
     def training_step(self, batch, batch_idx):
         if batch.pixel_values is None:
             return torch.tensor(0., requires_grad=True, device=self.device)

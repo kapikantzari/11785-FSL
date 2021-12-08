@@ -25,7 +25,7 @@ if __name__ == "__main__":
 
     # Extract features for base and novel class
     test.logger.info("============ Extract features and generating base class stats ============")
-    output_dict_base = test.extract_features_loop(checkpoint_dir, tag='last', loader_type='base')
+    output_dict_base = test.extract_features_loop(checkpoint_dir, tag='last', loader_type='base') #dataloader, vit class
     test.logger.info("Base set features saved!")
     output_dict_novel = test.extract_features_loop(checkpoint_dir, tag='last',loader_type='novel')
     test.logger.info("Novel features saved!")
