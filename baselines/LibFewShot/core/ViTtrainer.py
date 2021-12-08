@@ -32,7 +32,6 @@ from .utils import (
 
 import transformers
 from transformers import ViTFeatureExtractor, ViTForImageClassification, ViTModel, ViTConfig
-
 ViTbase = 'google/vit-base-patch16-224-in21k'
 
 # 1. Vit feature extractor -> input data,f extractor x -> ignore

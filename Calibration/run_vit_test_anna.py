@@ -6,7 +6,7 @@ import numpy as np
 sys.dont_write_bytecode = True
 
 from core.config import Config
-from core import Test, ViTTest
+from core import Test, ViTTest1
 
 PATH = "/home/dl_g33/dataset/miniImageNet--ravi/trained"
 VAR_DICT = {
@@ -26,16 +26,14 @@ if __name__ == "__main__":
     print("="*40)
     print(config)
     print("="*40)
-    test = ViTTest(config, result_path=PATH)
+    test = ViTTest1(config, result_path=PATH)
     checkpoint_dir = os.path.join(PATH, 'features')
 
     # Extract features for base and novel class
     test.logger.info("============ Extract features and generating base class stats ============")
-    output_dict_base = test.extract_features_loop(checkpoint_dir, tag='vit', loader_type='base')
-    # output_dict_base = test.extract_features_loop(checkpoint_dir, loader_type='base')
+    output_dict_base = test.extract_features_loop(checkpoint_dir, tag='last', loader_type='base')
     test.logger.info("Base set features saved!")
-    # output_dict_novel = test.extract_features_loop(checkpoint_dir, tag='last',loader_type='novel')
-    output_dict_novel = test.extract_features_loop(checkpoint_dir, loader_type='novel')
+    output_dict_novel = test.extract_features_loop(checkpoint_dir, tag='last',loader_type='novel')
     test.logger.info("Novel features saved!")
 
     # Generate base class stats

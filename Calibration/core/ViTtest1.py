@@ -4,7 +4,6 @@ import os
 from logging import getLogger
 from time import time
 import pickle
-import collections
 import numpy as np
 
 import torch
@@ -35,8 +34,8 @@ from .utils import (
 
 import transformers
 from transformers import ViTFeatureExtractor, ViTForImageClassification, ViTModel, ViTConfig
-# print("ViTModel:\n ========================================")
-# print(ViTModel)
+print("ViTModel:\n ========================================")
+print(ViTModel)
 
 ViTbase = 'google/vit-base-patch16-224-in21k'
 
@@ -47,12 +46,12 @@ class VisionTransformerClassifier(pl.LightningModule): # customized class
         self._model = ViTForImageClassification.from_pretrained(vitmodelpath, num_labels=64)
         self.model_type = ModelType.FINETUNING
         self.train_loader, self.val_loader, self.test_loader = self.train_dataloader()
-        # print("- - - [Vision Transformer Classifier initialized] - - ")
+        print("- - - [Vision Transformer Classifier initialized] - - ")
 
         # TODO:
         # pretrained param -> finetuned params
         self.emb_func = ViTModel.from_pretrained(vitmodelpath)
-        print("- - - ViTmodel embedding func - - -")
+        print("ViTmodel:")
         print(self.emb_func)
         # 1. feature_extractor(emb_func)
         # 2. few shot def _validate()
@@ -135,7 +134,7 @@ class VisionTransformerClassifier(pl.LightningModule): # customized class
         self.log('val_loss', loss)
 
 
-class ViTTest(object):
+class ViTTest1(object):
     """
     The tester.
 
@@ -225,9 +224,10 @@ class ViTTest(object):
                 print(logits)
                 print(logits.shape)
                 pred=torch.argmax(logits,dim=1)
+                print('pred:')
                 print(pred)
-                accuracies.append(outputs[1])
-                print(acc)
+                acc=np.mean(pred==labels)
+                accuracies.append(acc)
                 # measure accuracy and record loss
                 meter.update("acc", acc)
 
@@ -323,46 +323,49 @@ class ViTTest(object):
 
 
     #added from test.py (use set_forward_loss, or set_forward)
-    def _extract_features(self, loader, output_dict, loader_type):
+    def _extract_features(self):
         self.model.eval()
-        print("loader type: ", loader_type)
-        for i, batch in enumerate(loader):
-            print(f"-- output of batch {i}/{len(loader)} --")
-            pixel_values = batch.pixel_values
-            labels = batch.labels
-            output = self.model.emb_func(pixel_values=pixel_values)
-            # self.logger.info("{}, {}" .format(output.last_hidden_state.shape, labels.shape))
-            bs = labels.shape[0]
-            # for out, label in zip(output.last_hidden_state, labels):
-            for i in range(bs):
-                out = output.last_hidden_state[i]
-                label = labels[i]
-                # self.logger.info("{}, label {}, out shape {}" .format(i, label, out.shape))
-                outs = output_dict.get(label.item(), [])
-                outs.append(out)
-                output_dict[label.item()] = outs
-                # self.logger.info("{}, {}" .format(label, out))
+        print("train loader")
+        for i, batch in enumerate(self.train_loader):
+            print(i)
+            # # compute output
+            if loader_type == 'base':
+                output = self.model.set_forward_loss(batch, return_embedding=True)
+            else:
+                output = self.model.set_forward(batch, return_embedding=True)
+            print(output)
+            output = output.cpu().data.numpy()
+
+            for out, label in zip(output, torch.reshape(batch[1], (-1,))):
+                 outs = output_dict.get(label.item(), [])
+                 outs.append(out)
+                 output_dict[label.item()] = outs
+
+        if loader_type != 'base':
+            self.model.reverse_setting_info()
         return output_dict
     
 
     #added from test.py
-    def extract_features_loop(self, checkpoint_dir, tag, loader_type):
+    def extract_features_loop(self, checkpoint_dir, tag='last',loader_type='base'):
+        print("calling")
         save_dir = '{}/{}'.format(checkpoint_dir, tag)
-        if not os.path.isdir(save_dir):
-            os.makedirs(save_dir)
+        if os.path.isfile(save_dir + '/%s_features.plk'%loader_type):
+            with open(save_dir + '/%s_features.plk'%loader_type, 'rb') as f:
+                data = pickle.load(f)
+            return data
+        else:
+            if not os.path.isdir(save_dir):
+                os.makedirs(save_dir)
 
         if loader_type == 'base':
             loader = self.train_loader
-            print("Extract features: base")
         else:
             loader = self.test_loader
-            print("Extract features: test")
-        
         with torch.no_grad():
             output_dict = collections.defaultdict(list)
+            print(loader_type)
             output_dict = self._extract_features(loader, output_dict, loader_type)
-
-            self.logger.info("save dir: {}" .format(save_dir))
             with open(save_dir + '/%s_features.plk'%loader_type, 'wb') as f:
                 pickle.dump(output_dict, f)
         

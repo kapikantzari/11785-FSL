@@ -31,6 +31,7 @@ if __name__ == "__main__":
     test.logger.info("Novel features saved!")
 
     # Generate base class stats
+    test.logger.info("============ Generate base class stats ============")
     base_means = []
     base_cov = []
     for key in output_dict_base.keys():
@@ -41,4 +42,6 @@ if __name__ == "__main__":
         base_cov.append(cov)
     test.logger.info("Finish generating base class stats!")
 
+    
+    test.logger.info("============ Test Loop ============")
     test.test_loop(output_dict_novel, base_means, base_cov)
