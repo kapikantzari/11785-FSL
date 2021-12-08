@@ -81,7 +81,8 @@ class Test(object):
         Y_aug = []
         query_data_all = []
         query_label_all = []
-        k = 2
+        k = 4
+        #k = 2
         if epoch_idx != None:
             classes = sorted(list(output_dict_novel.keys()))[self.config["test_way"]*epoch_idx:self.config["test_way"]*(epoch_idx+1)]
         else:
@@ -248,6 +249,7 @@ class Test(object):
         save_dir = '{}/{}'.format(checkpoint_dir, tag)
         if os.path.isfile(save_dir + '/%s_features.plk'%loader_type):
             with open(save_dir + '/%s_features.plk'%loader_type, 'rb') as f:
+                print(save_dir + '/%s_features.plk'%loader_type)
                 data = pickle.load(f)
             return data
         else:

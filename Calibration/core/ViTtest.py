@@ -304,29 +304,33 @@ class ViTTest(object):
     def _extract_features(self, loader, output_dict, loader_type):
         self.model.eval()
         print("loader type: ", loader_type)
-        for i, batch in enumerate(loader):
-            if i > 1:
+        self.logger.info(f"-- output of batch 0/{len(loader)} --")
+        for idx, batch in enumerate(loader):
+            if (idx+1) % 50 == 0:
+                self.logger.info(f"-- output of batch {idx + 1}/{len(loader)} --")
                 break
-            if (i+1) % 50 == 0:
-                self.logger.info(f"-- output of batch {i}/{len(loader)} --")
-            self.logger.info("intput size: {}" .format(batch.pixel_values.shape))
+            # self.logger.info("intput size: {}" .format(batch.pixel_values.shape))
             pixel_values = batch.pixel_values
             labels = batch.labels
-            output = self.model.emb_func(pixel_values=pixel_values, output_hidden_states=True)
-            self.logger.info("output: {}" .format(output.last_hidden_state[:,0,:]))
-            self.logger.info("output: {}" .format(output.last_hidden_state[:,1,:]))
-            # self.logger.info("last hidden state size:{}, lasths[0] size: {}" .format(output.last_hidden_state.shape, output.last_hidden_state[0].shape))
+            output = self.model.emb_func(pixel_values=pixel_values)[0]
+            # relucount = np.array(output[:,0,:])
+            # relucount[relucount > 0] = 1
+            # relucount[relucount < 0] = 0
+            # self.logger.info(relucount)
+            # self.logger.info("output: {}/{}, {}, {}" .format(np.sum(relucount), relucount.shape[0]*relucount.shape[1], output.shape, output))
+            # self.logger.info("output[:,0,:]: {}, {}" .format(output[:,0,:].shape, output[:,0,:]))
+
             bs = labels.shape[0]
             # for out, label in zip(output.last_hidden_state, labels):
             for i in range(bs):
-                out = output.last_hidden_state[i]
+                out = output[i]
                 label = labels[i]
-                self.logger.info("{}, label {}, out shape {}" .format(i, label.shape, out.shape))
+                # self.logger.info("{}, out shape {}" .format(i, out.shape))
                 outs = output_dict.get(label.item(), [])
                 outs.append(out)
                 output_dict[label.item()] = outs
                 # self.logger.info("{}, {}" .format(label, out))
-                self.logger.info("output dict[{}] = {}" .format(label.item(), len(output_dict[label.item()])))
+                # self.logger.info("output dict[{}] has {} samples" .format(label.item(), len(output_dict[label.item()])))
         return output_dict
     
 

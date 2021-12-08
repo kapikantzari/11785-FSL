@@ -31,8 +31,8 @@ if __name__ == "__main__":
 
     # Extract features for base and novel class
     test.logger.info("============ Extract features and generating base class stats ============")
-    # output_dict_base = test.extract_features_loop(checkpoint_dir, tag='vit', loader_type='base')
-    # test.logger.info("Base set features saved!")
+    output_dict_base = test.extract_features_loop(checkpoint_dir, tag='vit', loader_type='base')
+    test.logger.info("Base set features saved!")
     output_dict_novel = test.extract_features_loop(checkpoint_dir, tag='vit', loader_type='novel')
     test.logger.info("Novel features saved!")
     # basepath = os.path.join(data_root, "vit/base_features.plk")
@@ -42,17 +42,17 @@ if __name__ == "__main__":
     # with open(novelpath, "rb") as fin:
     #     output_dict_novel = pickle.load(fin)
 
-    # Generate base class stats
-    base_means = []
-    base_cov = []
-    for key in output_dict_base.keys():
-        feature = np.array(output_dict_base[key])
-        mean = np.mean(feature, axis=0)
-        cov = np.cov(feature.T)
-        base_means.append(mean)
-        base_cov.append(cov)
-    test.logger.info("Finish generating base class stats!")
+    # # Generate base class stats
+    # base_means = []
+    # base_cov = []
+    # for key in output_dict_base.keys():
+    #     feature = np.array(output_dict_base[key])
+    #     mean = np.mean(feature, axis=0)
+    #     cov = np.cov(feature.T)
+    #     base_means.append(mean)
+    #     base_cov.append(cov)
+    # test.logger.info("Finish generating base class stats!")
 
-    #test.test_loop(output_dict_novel, base_means, base_cov)
-    test.test_loop()
+    # #test.test_loop(output_dict_novel, base_means, base_cov)
+    # test.test_loop()
     
