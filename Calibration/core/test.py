@@ -81,8 +81,7 @@ class Test(object):
         Y_aug = []
         query_data_all = []
         query_label_all = []
-        k = 4
-        #k = 2
+        k = 2
         if epoch_idx != None:
             classes = sorted(list(output_dict_novel.keys()))[self.config["test_way"]*epoch_idx:self.config["test_way"]*(epoch_idx+1)]
         else:
@@ -247,14 +246,13 @@ class Test(object):
 
     def extract_features_loop(self, checkpoint_dir, tag='last',loader_type='base'):
         save_dir = '{}/{}'.format(checkpoint_dir, tag)
-        if os.path.isfile(save_dir + '/%s_features.plk'%loader_type):
-            with open(save_dir + '/%s_features.plk'%loader_type, 'rb') as f:
-                print(save_dir + '/%s_features.plk'%loader_type)
-                data = pickle.load(f)
-            return data
-        else:
-            if not os.path.isdir(save_dir):
-                os.makedirs(save_dir)
+        # if os.path.isfile(save_dir + '/%s_features.plk'%loader_type):
+        #     with open(save_dir + '/%s_features.plk'%loader_type, 'rb') as f:
+        #         data = pickle.load(f)
+        #     return data
+        # else:
+        #     if not os.path.isdir(save_dir):
+        #         os.makedirs(save_dir)
 
         if loader_type == 'base':
             loader = self.train_loader
@@ -272,6 +270,8 @@ class Test(object):
         self.model.eval()
         if loader_type != 'base':
             self.model.reverse_setting_info()
+        self.logger.info("len of loader = {}" .format(loader))
+
         for i, batch in enumerate(loader):
             # compute output
             if loader_type == 'base':
@@ -281,6 +281,7 @@ class Test(object):
             output = output.cpu().data.numpy()
 
             for out, label in zip(output, torch.reshape(batch[1], (-1,))):
+                self.logger.info("out shape {}, label {} " .format(out.shape, label))
                 outs = output_dict.get(label.item(), [])
                 outs.append(out)
                 output_dict[label.item()] = outs

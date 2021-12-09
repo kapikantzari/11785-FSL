@@ -207,11 +207,13 @@ class ViTTest(object):
             if self.num_sampled != 0:
                 # Tukey's transform
                 beta = 0.5
+                
+                support_data = np.power(support_data * (support_data>0), beta)
+                query_data = np.power(query_data * (query_data>0), beta)
                 # softmax = nn.Softmax(dim=1)
                 # support_data = np.power(softmax(torch.tensor(support_data)).numpy(), beta)
                 # query_data = np.power(softmax(torch.tensor(query_data)).numpy(), beta)
-                support_data = np.power(support_data * (support_data>0), beta)
-                query_data = np.power(query_data * (query_data>0), beta)
+                
                 
                 # distribution calibration and feature sampling
                 mean, cov = self.distribution_calibration(support_data, base_means, base_cov, k=k)
@@ -308,29 +310,23 @@ class ViTTest(object):
         for idx, batch in enumerate(loader):
             if (idx+1) % 50 == 0:
                 self.logger.info(f"-- output of batch {idx + 1}/{len(loader)} --")
-                break
+
             # self.logger.info("intput size: {}" .format(batch.pixel_values.shape))
             pixel_values = batch.pixel_values
             labels = batch.labels
-            output = self.model.emb_func(pixel_values=pixel_values)[0]
-            # relucount = np.array(output[:,0,:])
-            # relucount[relucount > 0] = 1
-            # relucount[relucount < 0] = 0
-            # self.logger.info(relucount)
-            # self.logger.info("output: {}/{}, {}, {}" .format(np.sum(relucount), relucount.shape[0]*relucount.shape[1], output.shape, output))
-            # self.logger.info("output[:,0,:]: {}, {}" .format(output[:,0,:].shape, output[:,0,:]))
-
+            outputs = self.model.emb_func(pixel_values=pixel_values)
+            output = outputs.last_hidden_state[:,0,:].cpu().numpy()
+            # self.logger.info("output[:,0,:]: {}" .format(output.shape))
             bs = labels.shape[0]
-            # for out, label in zip(output.last_hidden_state, labels):
+            # self.logger.info("batch size = {}" .format(bs))
             for i in range(bs):
                 out = output[i]
                 label = labels[i]
-                # self.logger.info("{}, out shape {}" .format(i, out.shape))
+                # if i == 0:
+                    # self.logger.info("out shape {}" .format(out.shape))
                 outs = output_dict.get(label.item(), [])
                 outs.append(out)
                 output_dict[label.item()] = outs
-                # self.logger.info("{}, {}" .format(label, out))
-                # self.logger.info("output dict[{}] has {} samples" .format(label.item(), len(output_dict[label.item()])))
         return output_dict
     
 
@@ -354,7 +350,7 @@ class ViTTest(object):
             self.logger.info("save dir: {}" .format(save_dir))
             with open(save_dir + '/%s_features.plk'%loader_type, 'wb') as f:
                 pickle.dump(output_dict, f)
-            
+            f.close()
             self.logger.info("output dict\n{}" .format(output_dict))
             print("{} features extraction done!" .format(loader_type))
             return output_dict

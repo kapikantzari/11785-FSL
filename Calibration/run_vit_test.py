@@ -31,8 +31,8 @@ if __name__ == "__main__":
 
     # Extract features for base and novel class
     test.logger.info("============ Extract features and generating base class stats ============")
-    output_dict_base = test.extract_features_loop(checkpoint_dir, tag='vit', loader_type='base')
-    test.logger.info("Base set features saved!")
+    # output_dict_base = test.extract_features_loop(checkpoint_dir, tag='vit', loader_type='base')
+    # test.logger.info("Base set features saved!")
     output_dict_novel = test.extract_features_loop(checkpoint_dir, tag='vit', loader_type='novel')
     test.logger.info("Novel features saved!")
     # basepath = os.path.join(data_root, "vit/base_features.plk")
