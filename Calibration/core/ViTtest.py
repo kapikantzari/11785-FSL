@@ -6,12 +6,14 @@ from time import time
 import pickle
 import collections
 import numpy as np
+import yaml
 
 import torch
-import yaml
 from torch import nn
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
+
+from sklearn.linear_model import LogisticRegression
 
 from queue import Queue
 # import model as arch
@@ -35,8 +37,7 @@ from .utils import (
 
 import transformers
 from transformers import ViTFeatureExtractor, ViTForImageClassification, ViTModel, ViTConfig
-# print("ViTModel:\n ========================================")
-# print(ViTModel)
+
 
 ViTbase = 'google/vit-base-patch16-224-in21k'
 
@@ -52,10 +53,8 @@ class VisionTransformerClassifier(pl.LightningModule): # customized class
         # TODO:
         # pretrained param -> finetuned params
         self.emb_func = ViTModel.from_pretrained(vitmodelpath)
-        print("- - - ViTmodel embedding func - - -")
-        print(self.emb_func)
-        # 1. feature_extractor(emb_func)
-        # 2. few shot def _validate()
+        # print("- - - ViTmodel embedding func - - -")
+        # print(self.emb_func)
 
     def train_dataloader(self):
         feature_extractor = ViTFeatureExtractor.from_pretrained(ViTbase)
@@ -121,9 +120,9 @@ class VisionTransformerClassifier(pl.LightningModule): # customized class
 
         outputs = self._model(pixel_values=batch.pixel_values, labels=batch.labels)
         logits = outputs.logits
-        # print(logits.size())
+
         loss = outputs.loss
-        # print(loss)
+
         self.log('train_loss', loss)
 
         return loss
@@ -150,7 +149,7 @@ class ViTTest(object):
         self.writer = TensorboardWriter(self.viz_path)
         self.test_meter = self._init_meter()
         self.logger = getLogger(__name__)
-        self.logger.info(config)
+        # self.logger.info(config)
         self.model = VisionTransformerClassifier(ViTbase, self.config)
         self.model_type = ModelType.METRIC
 
@@ -158,6 +157,12 @@ class ViTTest(object):
         self.val_loader = self.model.val_loader
         self.test_loader = self.model.test_loader
 
+        self.rng = np.random.default_rng(seed=42)
+        self.num_sampled = self.config["num_sampled"]
+
+    """
+        few-shot test
+    """
     def test_loop(self, output_dict_novel, base_means, base_cov, is_test=False):
         """
         The normal test loop: test and cal the 0.95 mean_confidence_interval.
@@ -190,6 +195,7 @@ class ViTTest(object):
         query_data_all = []
         query_label_all = []
         k = 2
+        calibrationtype = 'standard'
         if epoch_idx != None:
             classes = sorted(list(output_dict_novel.keys()))[self.config["test_way"]*epoch_idx:self.config["test_way"]*(epoch_idx+1)]
         else:
@@ -216,7 +222,7 @@ class ViTTest(object):
                 
                 
                 # distribution calibration and feature sampling
-                mean, cov = self.distribution_calibration(support_data, base_means, base_cov, k=k)
+                mean, cov = self.distribution_calibration(support_data, base_means, base_cov, k, calibrationtype)
                 sampled_data = np.random.multivariate_normal(mean=mean, cov=cov, size=self.num_sampled)
                 sampled_label = [support_label[0]] * self.num_sampled
                 print("Label {}: length {}, k={}, first entry {}".format(label, len(sampled_data), k, sampled_data[0][:10]))
@@ -238,6 +244,27 @@ class ViTTest(object):
         acc = np.mean(predicts == query_label.reshape(-1,))
         return acc
 
+
+    # distribution calibraion
+    def distribution_calibration(self, query, base_means, base_cov, k, type='standard', alpha=0.21):
+        dist = []
+        for i in range(len(base_means)):
+            dist.append(np.linalg.norm(query-base_means[i]))
+        index = np.argpartition(dist, k)[:k]
+        mean = np.concatenate([np.array(base_means)[index], query])
+        calibrated_mean = np.mean(mean, axis=0)
+        calibrated_cov = np.mean(np.array(base_cov)[index], axis=0)+alpha
+
+        return calibrated_mean, calibrated_cov
+
+
+
+
+
+
+    """
+        configuration init
+    """
     def _init_files(self, config):
         """
         Init result_path(log_path, viz_path) from the config dict.
@@ -252,12 +279,13 @@ class ViTTest(object):
             result_path = self.result_path
         else:
             result_dir = "{}-{}-{}-{}-{}".format(
-                config["classifier"]["name"],
+                config["backbone"],
+                config["test_classifier"],
                 # you should ensure that data_root name contains its true name
                 config["data_root"].split("/")[-1],
-                config["backbone"]["name"],
                 config["way_num"],
                 config["shot_num"],
+                config["num_sampled"]
             )
             result_path = os.path.join(config["result_root"], result_dir)
         # self.logger.log("Result DIR: " + result_path)
@@ -267,10 +295,11 @@ class ViTTest(object):
         init_logger(
             config["log_level"],
             log_path,
-            config["classifier"]["name"],
-            config["backbone"]["name"],
+            config["backbone"],
+            config["test_classifier"],
             is_train=False,
         )
+        print("log path: ", log_path)
 
         state_dict_path = os.path.join(result_path, "checkpoints", "model_best.pth")
 
@@ -302,7 +331,9 @@ class ViTTest(object):
         return test_meter
 
 
-
+    """
+        feature extraction using trained basemodel
+    """
     def _extract_features(self, loader, output_dict, loader_type):
         self.model.eval()
         print("loader type: ", loader_type)
@@ -328,7 +359,6 @@ class ViTTest(object):
                 outs.append(out)
                 output_dict[label.item()] = outs
         return output_dict
-    
 
 
     def extract_features_loop(self, checkpoint_dir, tag, loader_type):
