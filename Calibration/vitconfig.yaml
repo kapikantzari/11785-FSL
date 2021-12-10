@@ -1,34 +1,34 @@
-# augment: true
-# augment_times: 1
-# augment_times_query: 1
-# batch_size: 128
-data_root: /home/dl_g33/dataset/miniImageNet--ravi
+data_root: ../dataset/miniImageNet--ravi
+device_ids: 0
+n_gpu: 1
 
-image_size: 224
+log_tag: tag
+epoch: 20
+
+num_labels: 64
+image_size: 84
+num_hidden_layers: 12
+num_attention_heads: 12
+hidden_size: 768
+intermediate_size: 1536
 
 log_interval: 200
 log_level: info
 log_name: null
 log_paramerter: false
 
-result_root: /home/dl_g33/fsl_git_sherry/results/
-resume: false
-save_interval: 10
-save_part:
-- emb_func
-seed: 0
-shot_num: 1
-tag: null
-tb_scale: 1.0
-
 test_episode: 100
 test_epoch: 5
 test_query: 15
 test_shot: 1
 test_way: 5
-train_episode: 100
-use_memory: True
-way_num: 5
-num_sampled: 0
+num_sampled: 750
 backbone: ViT
-test_classifier: knn
+test_classifier: LR
+
+train_episode: 50
+use_memory: True
+
+trainvit: True
+beta: 0.5
+alpha: 0.21

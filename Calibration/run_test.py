@@ -11,7 +11,7 @@ from core import Test
 PATH = "/home/dl_g33/dataset/miniImageNet--ravi/trained"
 VAR_DICT = {
     "test_epoch": 5,
-    "device_ids": "2",
+    "device_ids": "1",
     "n_gpu": 1,
     "test_episode": 600,
     "episode_size": 1,
@@ -19,7 +19,8 @@ VAR_DICT = {
 }
 
 if __name__ == "__main__":
-    config = Config(os.path.join(PATH, "config.yaml"), VAR_DICT).get_config_dict()
+    # config = Config(os.path.join("config.yaml"), VAR_DICT).get_config_dict()
+    config = Config(os.path.join("config.yaml")).get_config_dict()
     test = Test(config, result_path=PATH,load_data=True)
     checkpoint_dir = os.path.join(PATH, 'features')
 
@@ -36,6 +37,8 @@ if __name__ == "__main__":
     base_cov = []
     for key in output_dict_base.keys():
         feature = np.array(output_dict_base[key])
+        if config['base_transform']:
+            feature = np.power(feature * (feature > 0), 0.5)
         mean = np.mean(feature, axis=0)
         cov = np.cov(feature.T)
         base_means.append(mean)

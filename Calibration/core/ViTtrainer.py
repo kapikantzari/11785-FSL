@@ -13,6 +13,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from queue import Queue
 # import model as arch
 from .data import get_dataloader, get_vit_dataloader
+from .data.dataset import GeneralDataset, ViT_Dataset
 from .utils import (
     accuracy,
     AverageMeter,
@@ -35,34 +36,161 @@ from transformers import ViTFeatureExtractor, ViTForImageClassification, ViTMode
 
 ViTbase = 'google/vit-base-patch16-224-in21k'
 
-# 1. Vit feature extractor -> input data,f extractor x -> ignore
-# 2. ViTModel -> self.embed_func (load params from vitforclassifier)
-# 3. ViTForImageClassification -> self.model (trained! param)
+"""
+    # 1. Vit feature extractor -> input data,f extractor x -> ignore
+    # 2. ViTModel -> self.embed_func (load params from vitforclassifier)
+    # 3. ViTForImageClassification -> self.model (trained! param)
+
+    # class VisionTransformerClassifier(pl.LightningModule): # customized class
+    #     def __init__(self, ViTmodel, config):
+    #         super(VisionTransformerClassifier, self).__init__()
+    #         self.config = config
+    #         self._model = ViTForImageClassification.from_pretrained(vitmodelpath, num_labels=64)
+    #         self.model_type = ModelType.FINETUNING
+    #         self.train_loader, self.val_loader, self.test_loader = self.train_dataloader()
+    #         # print("- - - [Vision Transformer Classifier initialized] - - ")
+
+    #         # TODO:
+    #         # pretrained param -> finetuned params
+    #         self.emb_func = ViTModel.from_pretrained(vitmodelpath)
+    #         # print("- - - ViTmodel embedding func - - -")
+    #         # print(self.emb_func)
+
+    #     def train_dataloader(self):
+    #         feature_extractor = ViTFeatureExtractor.from_pretrained(ViTbase)
+    #         print("- - - feature extractor - - -")
+    #         print(feature_extractor)
+    #         print("- - - data loader - - -")
+    #         train_loader = get_vit_dataloader(self.config, "train", feature_extractor)
+    #         val_loader = get_vit_dataloader(self.config, "val", feature_extractor)
+    #         test_loader = get_vit_dataloader(self.config, "test", feature_extractor)
+            
+    #         return train_loader, val_loader, test_loader
+
+    #     def configure_optimizers(self):
+    #         no_decay = ["bias", "LayerNorm.weight"]
+    #         ACCUMULATE_GRAD_BATCHES = 1
+    #         WARMUP_PROPORTION = 0.1
+    #         LR = 4e-5
+    #         WEIGHT_DECAY = 0.01
+    #         ADAM_EPSILON = 1e-8
+    #         MAX_LENGTH = 16
+    #         train_steps = self.config["epoch"] * (
+    #                 len(self.train_loader) // ACCUMULATE_GRAD_BATCHES + 1)
+    #         warmup_steps = int(train_steps * WARMUP_PROPORTION)
+    #         self._model_hparams = {'lr': LR,
+    #                               'warmup_steps': warmup_steps,
+    #                               'train_steps': train_steps,
+    #                               'weight_decay': WEIGHT_DECAY,
+    #                               'adam_epsilon': ADAM_EPSILON,
+    #                               }
+    #         optimizer_grouped_parameters = [
+    #             {"params": [p for n, p in self._model.named_parameters()
+    #                         if not any(nd in n for nd in no_decay)],
+    #              "weight_decay": self._model_hparams['weight_decay']},
+    #             {"params": [p for n, p in self._model.named_parameters()
+    #                         if any(nd in n for nd in no_decay)],
+    #              "weight_decay": 0.0}]
+
+    #         print("- - -  optimizer -  - -")
+    #         optimizer = transformers.AdamW(
+    #             optimizer_grouped_parameters,
+    #             lr=self._model_hparams['lr'], eps=self._model_hparams['adam_epsilon'])
+
+    #         print(optimizer)
 
 
+    #         print("- - - scheduler - - -")
+    #         lr_scheduler = {
+    #             'scheduler': transformers.get_linear_schedule_with_warmup(
+    #                 optimizer,
+    #                 num_warmup_steps=self._model_hparams['warmup_steps'],
+    #                 num_training_steps=self._model_hparams['train_steps']),
+    #             'interval': 'step'}
+    #         print(lr_scheduler)
+
+    #         return [optimizer], [lr_scheduler]
+
+    #     def forward(self, pixel_values, labels):
+    #         return self._model(pixel_values=pixel_values, labels=labels)
+
+    #     def training_step(self, batch, batch_idx):
+    #         if batch.pixel_values is None:
+    #             return torch.tensor(0., requires_grad=True, device=self.device)
+
+    #         outputs = self._model(pixel_values=batch.pixel_values, labels=batch.labels)
+    #         logits = outputs.logits
+
+    #         loss = outputs.loss
+
+    #         self.log('train_loss', loss)
+
+    #         return loss
+
+    #     def validation_step(self, batch, batch_idx):
+    #         with torch.no_grad():
+    #             loss = self.training_step(batch=batch, batch_idx=None)
+
+    #         self.log('val_loss', loss)
+
+
+    #     def training_step(self, batch, batch_idx):
+    #         if batch.pixel_values is None:
+    #             return torch.tensor(0., requires_grad=True, device=self.device)
+
+    #         outputs = self._model(pixel_values=batch.pixel_values, labels=batch.labels)
+    #         logits = outputs.logits
+    #         # print(logits.size())
+    #         loss = outputs.loss
+    #         # print(loss)
+    #         self.log('train_loss', loss)
+
+    #         return loss
+
+    #     def validation_step(self, batch, batch_idx):
+    #         with torch.no_grad():
+    #             loss = self.training_step(batch=batch, batch_idx=None)
+
+    #         self.log('val_loss', loss)
+"""
 class VisionTransformerClassifier(pl.LightningModule): # customized class
-    def __init__(self, ViTmodel, config):
+    def __init__(self, vitmodelpath, config):
         super(VisionTransformerClassifier, self).__init__()
         self.config = config
-        self._model = ViTForImageClassification.from_pretrained(ViTmodel, num_labels=64)
-        self.model_type = ModelType.FINETUNING
-        self.train_loader, self.val_loader, self.test_loader = self.train_dataloader()
-        print("- - - [Vision Transformer Classifier initialized] - - ")
+        self._vitconfig = ViTConfig()
+        self._vitconfig.num_labels = 64
+        self._vitconfig.image_size = 84
+        self._vitconfig.num_hidden_layers = 6
+        self._vitconfig.num_attention_heads = 12
+        self._vitconfig.hidden_size = 768
+        self._vitconfig.intermediate_size = 1536
 
-        # TODO:
-        self.emb_func = ViTmodel.from_pretrained(ViTbase) # pretrained param -> finetuned params
-        # 1. feature_extractor(emb_func)
-        # 2. few shot def _validate()
+        self._model = ViTForImageClassification(self._vitconfig)
+        print("ViT config")
+        print(self._model.config)
+        self.model_type = ModelType.FINETUNING
+        # dataset = ViT_Dataset(
+        #     feature_extractor,
+        #     data_root=config["data_root"],
+        #     mode=mode,
+        #     use_memory=config["use_memory"]
+        # )
+
+        self.train_loader, self.val_loader, self.test_loader = self.train_dataloader()
+        # print("- - - [Vision Transformer Classifier initialized] - - ")
+
+        # self.emb_func = ViTModel.from_pretrained(vitmodelpath)
 
     def train_dataloader(self):
-        feature_extractor = ViTFeatureExtractor.from_pretrained(ViTbase)
-        print("- - - feature extractor - - -")
-        print(feature_extractor)
-        print("- - - data loader - - -")
+        # feature_extractor = ViTFeatureExtractor.from_pretrained(ViTbase)
+        feature_extractor = ViTFeatureExtractor(size=84)
+        # print("- - - feature extractor - - -")
+        # print(feature_extractor)
+        # print("- - - data loader - - -")
         train_loader = get_vit_dataloader(self.config, "train", feature_extractor)
         val_loader = get_vit_dataloader(self.config, "val", feature_extractor)
         test_loader = get_vit_dataloader(self.config, "test", feature_extractor)
-
+        
         return train_loader, val_loader, test_loader
 
     def configure_optimizers(self):
@@ -112,20 +240,15 @@ class VisionTransformerClassifier(pl.LightningModule): # customized class
     def forward(self, pixel_values, labels):
         return self._model(pixel_values=pixel_values, labels=labels)
 
-    def set_forward(): 
-        print(self.embed_func)
-        return self.embed_func
-
-
     def training_step(self, batch, batch_idx):
         if batch.pixel_values is None:
             return torch.tensor(0., requires_grad=True, device=self.device)
 
         outputs = self._model(pixel_values=batch.pixel_values, labels=batch.labels)
         logits = outputs.logits
-        # print(logits.size())
+
         loss = outputs.loss
-        # print(loss)
+
         self.log('train_loss', loss)
 
         return loss
@@ -175,15 +298,15 @@ class ViTTrainer(object):
     def _train(self):
         ACCUMULATE_GRAD_BATCHES = 1
         VAL_CHECK_INTERVAL = 0.5
-        batch_size = 16
-        log_dir = '../results/ViT_exp1_dec_1'
+        batch_size = 8
+        log_dir = '../results/ViT_scratch'
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
         self.logger.info('Trainer log dir: %s' %(log_dir))
         checkpoint_callback = ModelCheckpoint(
             dirpath=f'{log_dir}/',
-            filename='vit-mini-{epoch:02d}-{loss:.2f}',
+            filename='vit-mini-{epoch:02d}-{train_loss:.2f}',
             monitor='train_loss',
             mode='min',
             save_top_k=1,
@@ -195,8 +318,8 @@ class ViTTrainer(object):
             max_epochs=self.config['epoch'],
             accumulate_grad_batches=ACCUMULATE_GRAD_BATCHES,
             val_check_interval=VAL_CHECK_INTERVAL,
-            # devices=4,
             accelerator='gpu',
+            devices=4,
             gpus=1)
 
         self.logger.info(trainer)
@@ -205,7 +328,7 @@ class ViTTrainer(object):
         print("*"*40)
         trainer.fit(
             model=self.model,
-            train_dataloader=self.train_loader,
+            train_dataloaders=self.train_loader,
             val_dataloaders=self.train_loader)
 
     def _init_files(self, config):

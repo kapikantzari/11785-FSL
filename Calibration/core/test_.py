@@ -4,13 +4,11 @@ from logging import getLogger
 from time import time
 import collections
 import pickle
-import random
 
 import numpy as np
 import torch
 from torch import nn
 from sklearn.linear_model import LogisticRegression
-import dcor
 
 import core.model as arch
 from core.data import get_dataloader
@@ -50,26 +48,29 @@ class Test(object):
                 self.train_loader,
                 self.test_loader,
             ) = self._init_dataloader(config)
-        self.rng = np.random.default_rng(seed=20)
+
+        self.rng = np.random.default_rng(seed=42)
         self.num_sampled = self.config["num_sampled"]
+
 
     def test_loop(self, output_dict_novel, base_means, base_cov, is_test=False):
         """
         The normal test loop: test and cal the 0.95 mean_confidence_interval.
         """
+        print("Base mean:", base_means[0][:10])
+        print("Base cov:", base_cov[0][:10])
         acc_list = []
-
-        print("num sumpled: {}" .format(self.num_sampled))
+        # for alpha in np.linspace(0.0, 1.0, num=101):
+        alpha = 0.0
+        self.logger.info("============ Testing on the test set ============")
         for epoch_idx in range(4):
-            # self.logger.info("============ Testing on the test set ============")
-            acc = self._validate(output_dict_novel, base_means, base_cov, epoch_idx=epoch_idx)
-            # acc = self._validate(output_dict_novel, base_means, base_cov)
+            acc = self._validate(alpha, output_dict_novel, base_means, base_cov, epoch_idx=epoch_idx)
             acc_list.append(acc)
-            self.logger.info("[Epoch {}] Test Accuracy: {:.3f} Running Acc: {:.3f}".format(epoch_idx, acc, float(np.mean(acc_list))))
-        self.logger.info("{} way {} shot ACC : {}".format(self.config["test_way"], self.config["test_shot"], float(np.mean(acc_list))))
+            self.logger.info("[Epoch {}] Test Accuracy: {:.3f}".format(epoch_idx, acc))
+        self.logger.info("alpha = {:.2f}, {} way {} shot ACC : {}".format(alpha, self.config["test_way"], self.config["test_shot"], float(np.mean(acc_list))))
         self.logger.info("............Testing is end............")
 
-    def _validate(self, output_dict_novel, base_means, base_cov, epoch_idx=None):
+    def _validate(self, alpha, output_dict_novel, base_means, base_cov, epoch_idx=None):
         """
         The test stage.
         Args:
@@ -85,19 +86,12 @@ class Test(object):
         if epoch_idx != None:
             classes = sorted(list(output_dict_novel.keys()))[self.config["test_way"]*epoch_idx:self.config["test_way"]*(epoch_idx+1)]
         else:
-            # classes = np.random.permutation(list(output_dict_novel.keys()))[:self.config["test_way"]]
-            classes = set()
-            while len(classes)<self.config["test_way"]:
-                classes.add(random.choice(list(output_dict_novel.keys())))
-        
-        self.logger.info("Classes: {}" .format(classes))
-
+            classes = np.random.permutation(list(output_dict_novel.keys()))[:self.config["test_way"]]
+    
         for label in classes:
             data = output_dict_novel[label]
-            # print("label {}, idx [{}]" .format(label, idxs))
-            idxs = np.random.permutation(len(data))[:self.config["test_shot"]+self.config["test_query"]]
-            # idxs = np.arange(self.config["test_shot"]+self.config["test_query"])
-
+            # idxs = np.random.permutation(len(data))[:self.config["test_shot"]+self.config["test_query"]]
+            idxs = np.arange(self.config["test_shot"]+self.config["test_query"])
             support_data = np.array(data)[idxs[:self.config["test_shot"]]]
             support_label = np.array([[label] * self.config["test_shot"]])
             query_data = np.array(data)[idxs[self.config["test_shot"]:]]
@@ -105,21 +99,52 @@ class Test(object):
 
             if self.num_sampled != 0:
                 # Tukey's transform
-                # beta = 0.5
-                # alpha = 0.21
                 beta = 0.9
-                alpha = 0.0
-                support_data = np.power(support_data * (support_data>0), beta)
-                query_data = np.power(query_data * (query_data>0), beta)
+                # self.logger.info("beta = {}" .format(beta))
+
+                def relu_transform(data, beta):
+                    print("relu transform")
+                    return np.power(data * (data > 0), beta)
+                
+                def neg_transform(data, beta):
+                    negdata = data * (data < 0)
+                    posdata = data * (data > 0)
+                    negdata = -np.power(-negdata, beta)
+                    posdata = np.power(posdata, beta)
+                    return posdata + negdata
+
+                def shift_tranform(data, beta):
+                    shift = np.min(data)
+                    data -= shift
+                    data = np.power(data, beta)
+                    data -= np.power((-shift), beta)
+                    return data
+
+                def softmax_transform():
+                    
+                # def log_transform(data, beta):
+                #     data = data * (data > 0) + 1e-16
+                #     return np.log(data)
+                
+                support_data = relu_transform(support_data, beta)
+                query_data = relu_transform(support_data, beta)
+
+                # shift = np.min(support_data)
+                # print("Shift = ", shift)
+                # support_data -= shift
+                # query_data -= shift
+                # support_data = np.power(support_data * (support_data>0), beta)
+                # query_data = np.power(query_data * (query_data>0), beta)
+                # support_data += shift
+                # query_data += shift
 
                 # distribution calibration and feature sampling
                 # mean, cov = self.distribution_calibration(support_data, base_means, base_cov, k=k)
                 mean, cov = self.weighted_calibration(support_data, base_means, base_cov)
-                # mean, cov = self.cosine_wc(support_data, base_means, base_cov, alpha)
-                # mean, cov = self.dcor_wc(support_data, base_means, base_cov)
-
+                
                 sampled_data = np.random.multivariate_normal(mean=mean, cov=cov, size=self.num_sampled)
                 sampled_label = [support_label[0]] * self.num_sampled
+                # print("Label {}: length {}, k={}, first entry {}".format(label, len(sampled_data), k, sampled_data[0][:10]))
                 X_aug.append(np.concatenate([support_data, sampled_data]))
                 Y_aug.append(np.concatenate([support_label, sampled_label]))
                 query_data_all.append(query_data)
@@ -307,7 +332,7 @@ class Test(object):
         calibrated_cov = np.mean(np.array(base_cov)[index], axis=0)+alpha
 
         return calibrated_mean, calibrated_cov
-
+    
     def weighted_calibration(self, query, base_means, base_cov, alpha=0.21):
         base_means = np.array(base_means)
         base_cov = np.array(base_cov)
@@ -329,26 +354,8 @@ class Test(object):
         base_means = np.array(base_means)
         base_cov = np.array(base_cov)
         dist = []
-        cos = nn.CosineSimilarity(dim=1, eps=1e-6)
         for i in range(len(base_means)):
-            dist.append(cos(torch.tensor(base_means[i]), torch.tensor(query)))
-        softmax = nn.Softmax()
-        dist = softmax(torch.tensor(dist)).numpy()
-        mean = []
-        cov = []
-        for i in range(64):
-            mean.append(np.dot(base_means[i], dist[i]))
-            cov.append(np.dot(base_cov[i], dist[i]))
-        calibrated_mean = np.squeeze(np.transpose(np.sum(mean, axis=0)/2 + query/2))
-        calibrated_cov = np.sum(cov, axis=0) + alpha
-        return calibrated_mean, calibrated_cov
-
-    def dcor_wc(self, query, base_means, base_cov, alpha=0.21):
-        base_means = np.array(base_means)
-        base_cov = np.array(base_cov)
-        dist = []
-        for i in range(len(base_means)):
-            dist.append(dcor.distance_correlation(base_means[i], query))
+            dist.append(-1 * np.linalg.norm(base_means[i]-query))
         softmax = nn.Softmax()
         dist = softmax(torch.tensor(dist)).numpy()
         mean = []

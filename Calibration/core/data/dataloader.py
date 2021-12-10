@@ -179,24 +179,17 @@ def get_vit_dataloader(config, mode, feature_extractor):
             return_tensors='pt').pixel_values
 
         labels = torch.LongTensor([example[1] for example in raw_batch])
-        # labels = one_hot(torch.LongTensor([example[1] for example in raw_batch]), 64)
-        # print("*"*40)
-        # print("vit collate function")
-        # print("*"*40)
-        # print(pixel_values[0])
-        # print(pixel_values.size())
-        # print(labels[0])
-        # print(labels.size())
+
 
         return ViTclassifyBatch(pixel_values=pixel_values, labels=labels)
 
-
+    gpus = 1
     if mode == "train":
         dataloader = DataLoader(
             dataset,
             batch_size=config["batch_size"],
             shuffle=True,
-            num_workers=config["n_gpu"] * 4,
+            num_workers=gpus * 4,
             drop_last=True,
             pin_memory=True,
             collate_fn=vit_collate_function,
@@ -216,7 +209,7 @@ def get_vit_dataloader(config, mode, feature_extractor):
             dataset,
             shuffle=False,
             batch_sampler=sampler,
-            num_workers=config["n_gpu"] * 4,
+            num_workers=gpus * 4,
             pin_memory=True,
             collate_fn=vit_collate_function,
         )
