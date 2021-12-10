@@ -8,15 +8,8 @@ sys.dont_write_bytecode = True
 from core.config import Config
 from core import Test
 
-PATH = "/home/dl_g33/dataset/miniImageNet--ravi/trained"
-VAR_DICT = {
-    "test_epoch": 5,
-    "device_ids": "1",
-    "n_gpu": 1,
-    "test_episode": 600,
-    "episode_size": 1,
-    "test_way": 5,
-}
+# model stored in 'PATH/checkpoints/model_best.pth'
+PATH = "/home/dl_g33/dataset/miniImageNet--ravi/trained" 
 
 if __name__ == "__main__":
     # config = Config(os.path.join("config.yaml"), VAR_DICT).get_config_dict()
@@ -46,4 +39,4 @@ if __name__ == "__main__":
     test.logger.info("Finish generating base class stats!")
 
     test.logger.info("============ Test Loop ============")
-    test.test_loop(output_dict_novel, base_means, base_cov)
+    test.test_loop(output_dict_novel, base_means, base_cov, is_round_test=config['is_round_test'])

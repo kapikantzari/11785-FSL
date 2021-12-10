@@ -53,19 +53,25 @@ class Test(object):
         self.rng = np.random.default_rng(seed=20)
         self.num_sampled = self.config["num_sampled"]
 
-    def test_loop(self, output_dict_novel, base_means, base_cov, is_test=False):
+    def test_loop(self, output_dict_novel, base_means, base_cov, is_round_test=True, is_test=False):
         """
         The normal test loop: test and cal the 0.95 mean_confidence_interval.
         """
         acc_list = []
 
         print("num sumpled: {}" .format(self.num_sampled))
-        for epoch_idx in range(4):
-            # self.logger.info("============ Testing on the test set ============")
-            acc = self._validate(output_dict_novel, base_means, base_cov, epoch_idx=epoch_idx)
-            # acc = self._validate(output_dict_novel, base_means, base_cov)
-            acc_list.append(acc)
-            self.logger.info("[Epoch {}] Test Accuracy: {:.3f} Running Acc: {:.3f}".format(epoch_idx, acc, float(np.mean(acc_list))))
+        print("is round test: {}".format(is_round_test))
+        # self.logger.info("============ Testing on the test set ============")
+        if is_round_test:
+            for epoch_idx in range(4):
+                acc = self._validate(output_dict_novel, base_means, base_cov, epoch_idx=epoch_idx)
+                acc_list.append(acc)
+                self.logger.info("[Epoch {}] Test Accuracy: {:.3f} Running Acc: {:.3f}".format(epoch_idx, acc, float(np.mean(acc_list))))
+        else:
+            for epoch_idx in range(self.config['test_epoch']):
+                acc = self._validate(output_dict_novel, base_means, base_cov)
+                acc_list.append(acc)
+                self.logger.info("[Epoch {}] Test Accuracy: {:.3f} Running Acc: {:.3f}".format(epoch_idx, acc, float(np.mean(acc_list))))
         self.logger.info("{} way {} shot ACC : {}".format(self.config["test_way"], self.config["test_shot"], float(np.mean(acc_list))))
         self.logger.info("............Testing is end............")
 
