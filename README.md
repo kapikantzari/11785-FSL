@@ -1,6 +1,4 @@
 # 11785-FSL
-Use `simple-baseline.ipynb` and `libfewshot-baseline.ipynb`  to run the baseline models.
-
 The implementations are adapted from the implementation of the original papers found [here](https://github.com/RL-VIG/LibFewShot). Note due to the size limit, the pretrained model, miniImageNet dataset are not included but they can be downloaded from the following links:
 
 - [Pretrained ResNet 12 Backbone](https://drive.google.com/drive/folders/1BDIeiQuSNqAfksurLtZ3FL6Ds3v41da0?usp=sharing)
